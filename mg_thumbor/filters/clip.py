@@ -17,42 +17,47 @@ from thumbor.utils import logger
 class Filter(BaseFilter):
     phase = thumbor.filters.PHASE_AFTER_LOAD
 
-    @filter_method(BaseFilter.Number)
-    def clip(self, value):
+    @filter_method(BaseFilter.PositiveNumber)
+    def clip(self, clip):
+        upscale = False
         image_size = self.context.request.engine.size
         orientation = self.context.request.engine.get_orientation()
         if self.context.config.RESPECT_ORIENTATION and orientation in [5, 6, 7, 8]:
-            image_size = (image_size[1], image_size[0])
-        requested_ratio = int(self.context.request.width) / int(self.context.request.height)
-        source_ratio = int(image_size[0]) / int(image_size[1])
+            original_size = [image_size[1], image_size[0]]
+        else:
+            original_size = [image_size[0], image_size[1]]
 
-        logger.debug('filters.clip: source file: %dx%d ' % image_size)
-        logger.debug('filters.clip: source ratio: %.2f ' % (source_ratio))
-        logger.debug('filters.clip: requested: %dx%d ' % (self.context.request.width, self.context.request.height))
-        logger.debug('filters.clip: requested ratio %.2f ' % (requested_ratio))
+        logger.debug('filters.clip: we will crop up to ' + str(clip) + '%')
+        new_size = [int(self.context.request.width), int(self.context.request.height)]
+        zoomed_x = max(float(new_size[0]), float(new_size[1]*original_size[0]/original_size[1]))
+        if clip >= 0 and clip < 100:
+            clip = min(31, clip*32/100)
+            must_be_shown = 1 - (clip / 31)
+            zoomed_x = min(zoomed_x, new_size[0]/must_be_shown, new_size[1]*original_size[0]/(must_be_shown * original_size[1]))
 
-        if (requested_ratio > 1 and source_ratio < 1) or (requested_ratio < 1 and source_ratio < 1):
-            pixels_to_crop = value * image_size[1] / 100
-            crop = crop = {
-                'left': 0,
-                'right': image_size[0],
-                'top': int(pixels_to_crop / 2),
-                'bottom': image_size[1] - (int(pixels_to_crop / 2))
-            }
-            self.context.request.should_crop = True
-            self.context.request.crop = crop
-            logger.debug('filters.clip: we will crop from height by ' + str(value) + '%')
-            logger.debug('filters.clip: %s ', self.context.request.crop)
+        if upscale == False:
+            zoomed_x = min(zoomed_x, original_size[0])
 
-        elif (requested_ratio < 1 and source_ratio > 1) or (requested_ratio > 1 and source_ratio > 1):
-            pixels_to_crop = value * image_size[0] / 100
-            crop = crop = {
-                'top': 0,
-                'bottom': image_size[1],
-                'left': int(pixels_to_crop / 2),
-                'right': image_size[0] - (int(pixels_to_crop / 2))
-            }
-            self.context.request.should_crop = True
-            self.context.request.crop = crop
-            logger.debug('filters.clip: we will crop from width by ' + str(value) + '%')
-            logger.debug('filters.clip: %s ', self.context.request.crop)
+        zoomed_y = zoomed_x * original_size[1] / original_size[0]
+        zoomed_size = [zoomed_x, zoomed_y]
+        source_top_left = [0, 0]
+        for it in range(0, 2):
+            if (zoomed_size[it] > new_size[it]) :
+                source_clip = original_size[it] * (zoomed_size[it] - new_size[it]) / zoomed_size[it]
+                source_top_left[it] += source_clip * 0.5
+                original_size[it] -= source_clip
+
+        dest_left = int(source_top_left[0])
+        dest_top = int(source_top_left[1])
+        dest_right = int((source_top_left[0] + original_size[0]))
+        dest_bottom = int((source_top_left[1] + original_size[1]))
+
+        crop = crop = {
+            'top': dest_top,
+            'bottom': dest_bottom,
+            'left': dest_left,
+            'right': dest_right
+        }
+        self.context.request.should_crop = True
+        self.context.request.crop = crop
+        logger.debug('filters.clip: %s ', self.context.request.crop)
