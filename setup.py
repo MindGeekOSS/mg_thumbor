@@ -8,10 +8,7 @@ setup(name="mg_thumbor",
     author="Fabrice Baumann",
     author_email="fabrice.baumann@mindgeek.com",
     license="MIT",
-    packages=["mg_thumbor"],
+    packages=["mg_thumbor", "mg_thumbor.filters"],
     package_dir={"mg_thumbor": "mg_thumbor"},
-    zip_safe=False,
-    install_requires=[
-        "thumbor",
-    ]
+    zip_safe=False
 )
